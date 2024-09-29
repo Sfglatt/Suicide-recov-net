@@ -1,0 +1,654 @@
+---
+title: "02a_networks"
+author: "Sglatt"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages}
+if (!require("bootnet")) {install.packages("bootnet"); require("bootnet")}
+if (!require("dplyr")) {install.packages("dplyr"); require("dplyr")}
+if (!require("EGAnet")) {install.packages("EGAnet"); require("EGAnet")}
+if (!require("foreign")) {install.packages("foreign"); require("foreign")}
+if (!require("ggpubr")) {install.packages("ggpubr"); require("ggpubr")}
+if (!require("ggplot2")) {install.packages("ggplot2"); require("ggplot2")}
+if (!require("glmnet")) {install.packages("glmnet"); require("glmnet")}
+if (!require("haven")) {install.packages("haven"); require("haven")}
+if (!require("igraph")) {install.packages("igraph"); require("igraph")}
+if (!require("IsingFit")) {install.packages("IsingFit"); require("IsingFit")}
+if (!require("jmv")) {install.packages("jmv"); require("jmv")}
+if (!require("moments")) {install.packages("moments"); require("moments")}
+if (!require("naniar")) {install.packages("naniar"); require("naniar")}
+if (!require("network")) {install.packages("network"); require("network")}
+if (!require("NetworkComparisonTest")) {install.packages("NetworkComparisonTest"); require("NetworkComparisonTest")}
+if (!require("networktools")) {install.packages("networktools"); require("networktools")}
+if (!require("pcalg")) {install.packages("pcalg"); require("pcalg")}
+if (!require("psych")) {install.packages("psych"); require("psych")}
+if (!require("psychTools")) {install.packages("psychTools"); require("psychTools")}
+if (!require("qgraph")) {install.packages("qgraph"); require("qgraph")}
+if (!require("relaimpo")) {install.packages("relaimpo"); require("relaimpo")}
+if (!require("stats")) {install.packages("stats"); require("stats")}
+if (!require("tidyverse")) {install.packages("tidyverse"); require("tidyverse")}
+```
+
+# Data and subsets
+```{r}
+RESST_all <- read.csv("Created_data/RESST_merged_SG_2024-09-29.csv") # From "01a_data_processing"
+
+RESST_all <- merged_3
+
+RESST_all <- RESST_all %>%
+  mutate(across(c(R1:R21), as.numeric))
+
+RESST_items <- RESST_all %>%
+  dplyr::select(R1:R21)
+
+RESST_inv <- RESST_all %>%
+  dplyr::select(R1:R21, SA_group)
+
+RESST_time_inv <- read.csv("Created_data/RESST_3_week_long_form_SG_2024-09-29.csv") # From "01b_data_processing"
+```
+
+# Item descriptives
+```{r descriptives}
+jmv::descriptives(
+    data = RESST_all,
+    vars = vars(R1, 
+                R2, 
+                R3, 
+                R4, 
+                R5, 
+                R6, 
+                R7, 
+                R8,
+                R9, 
+                R10,
+                R11, 
+                R12, 
+                R13, 
+                R14, 
+                R15,
+                R16, 
+                R17, 
+                R18, 
+                R19, 
+                R20, 
+                R21, 
+                SBQR_total),
+    min = FALSE,
+    max = FALSE,
+    skew = TRUE,
+    kurt = TRUE)
+```
+
+# Exploratory graph analysis
+```{r EGA}
+# Standard EGA
+RESST_ega <- EGA(data = RESST_items, 
+                 corr = "auto", 
+                 model = "glasso", 
+                 algorithm = "walktrap",
+                 uni.method = "louvain",
+                 plot.EGA = TRUE,
+                 verbose = TRUE)
+
+
+plot(RESST_ega, layout = "circle")
+
+# Summary statistics about the EGA
+summary(RESST_ega)
+
+# Bootstrap EGA
+set.seed(123456)
+RESST_boot <- bootEGA(
+  data = RESST_items, 
+  corr = "auto", 
+  model = "glasso", 
+  algorithm = "walktrap",
+  uni.method = "louvain",
+  iter = 1000,
+  seed = 123456, 
+)
+
+
+# Summary statistics about the bootstrap EGA
+summary(RESST_boot)
+
+# Plots comparing the data EGA against 1000 bootsrapping procedure
+RESST_compare <- compare.EGA.plots(RESST_ega, RESST_boot,
+  labels = c("Empirical", "Bootstrap")
+)
+
+# Dimension stability
+RESST_boot_dim <- dimensionStability(RESST_boot)
+
+# where are the items going in the times that it isn't going in its dimension
+RESST_boot_dim$item.stability$item.stability$all.dimensions
+
+# Save output
+pdf("Output/EGA_dimensions_size.pdf", width = 10, height = 10)
+plot(RESST_ega, 
+     color.palette = c("#33FFFF", "#FF3399", "#FFCC99", "#99ff99"), 
+     node.size = colSums(RESST_ega$network)^2 * 16) 
+dev.off() 
+
+pdf("Output/EGA_dimensions.pdf", width = 10, height = 10)
+plot(RESST_ega, 
+     color.palette = c("#33FFFF", "#FF3399", "#FFCC99", "#99ff99"))  
+dev.off() 
+
+pdf("Output/EGA_empirical_boot.pdf", width = 10, height = 10)
+(RESST_compare <- compare.EGA.plots(RESST_ega, RESST_boot,
+  labels = c("Empirical", "Bootstrap")
+))
+dev.off()
+
+pdf("Output/EGA_dimension_stability.pdf", width = 10, height = 10)
+dimensionStability(RESST_boot)
+dev.off()
+```
+
+# EGA Suicide attempt invariance
+```{r EGA SA inv}
+# network for people with SA history 
+RESST_ega_SA <- bootEGA(
+  data = RESST_inv[RESST_inv$SA_group == "1", 1:21],
+  corr = "auto",
+  model = "glasso",
+  algorithm = "walktrap",
+  uni.method =  "louvain",
+  iter = 1000,
+  type = "parametric",
+  ncores = 4,
+  typicalStructure = TRUE,
+  plot.typicalStructure = TRUE,
+  seed = 123456,
+  verbose = TRUE,
+)
+
+RESST_ega_no_SA <- bootEGA(
+  data = RESST_inv[RESST_inv$SA_group == "0", 1:21],
+  corr = "auto",
+  model = "glasso",
+  algorithm = "walktrap",
+  uni.method =  "louvain",
+  iter = 1000,
+  type = "parametric",
+  ncores = 4,
+  typicalStructure = TRUE,
+  plot.typicalStructure = TRUE,
+  seed = 123456,
+  verbose = TRUE,
+)
+
+plot(RESST_ega_no_SA)
+plot(RESST_ega_SA)
+
+# look at item/dimension stability in the SA/no SA networks 
+RESST_ega_SA_dim <- itemStability(RESST_ega_SA)
+RESST_ega_no_SA_dim <- itemStability(RESST_ega_no_SA)
+
+# compare bootstrapped between group networks of SA
+igraph::compare(RESST_ega_SA$wc, RESST_ega_no_SA$wc, method = "nmi")
+# compute the normalized mutual information between the wc objects (risk vs. no risk)
+# value of 1 meaning identical. if it is 1, you have established configural invariance 
+
+# metric invariance by SA status
+metric_inv_SA <- invariance(data = RESST_inv[,1:21],
+                             groups = RESST_inv$SA_group, 
+                             configural.threshold = 0.7, 
+                             configural.type = "parametric",
+                             corr = "auto",
+                             model = "glasso", 
+                             algorithm =  "walktrap", 
+                             uni.method = "louvain",
+                             iter = 1000,
+                             gamma = 0, 
+                             ncores = 4,
+                             seed = 123456)
+
+(RESST_metric_invariance_fig <- plot(metric_inv_SA))
+(RESST_metric_invariance_crc_fig <- plot(metric_inv_SA,layout = "circle"))
+
+# Benjamin-Hochberg procedure to adjust p's for multiple comparisons
+adjusted.p <- p.adjust(
+  metric_inv_SA$results$p, method = "BH",
+  n = length(metric_inv_SA$results$p)
+)
+
+metric_inv_SA$results[metric_inv_SA$results$p < .05,] # Uncorrected p
+metric_inv_SA$results[adjusted.p < .05,] # corrected p
+
+# figures 
+pdf("Output/Invariance_SA-_dimensions.pdf", width = 5, height = 5)
+dimensionStability(RESST_ega_no_SA)
+dev.off()
+
+pdf("Output/Invariance_SA+_dimensions.pdf", width = 5, height = 5)
+dimensionStability(RESST_ega_SA)
+dev.off()
+
+pdf("Output/Invariance_SA.pdf", width = 10, height = 10)
+RESST_metric_invariance_fig
+dev.off()
+
+pdf("Output/Invariance_SA_circle.pdf", width = 10, height = 10)
+RESST_metric_invariance_crc_fig
+dev.off()
+```
+
+# EGA 21 day invariance
+```{r EGA time inv}
+T1_T2_RESST_inv <- invariance(data = RESST_time_inv[,3:23],
+                             groups = RESST_time_inv$Timepoint, 
+                             configural.threshold = 0.7, 
+                             configural.type = "parametric",
+                             corr = "auto",
+                             model = "glasso", 
+                             algorithm =  "walktrap", 
+                             uni.method = "louvain",
+                             iter = 1000,
+                             gamma = 0, 
+                             ncores = 4,
+                             seed = 123456)
+
+(T1_T2_RESST_inv_fig <- plot(T1_T2_RESST_inv))
+(T1_T2_RESST_inv_crc_fig <- plot(T1_T2_RESST_inv,layout = "circle"))
+
+# Benjamin-Hochberg procedure to adjust p's for multiple comparisons 
+(adjusted.p <- p.adjust(T1_T2_RESST_inv$results$p, method = "BH",
+                       n = length(T1_T2_RESST_inv$results$p))) # corrected p 
+
+(unadjusted.p <- T1_T2_RESST_inv$results[T1_T2_RESST_inv$results$p < .05,]) # uncorrected p 
+
+# figures
+pdf("Output/Invariance_3week.pdf", width = 10, height = 6)
+T1_T2_RESST_inv_fig
+dev.off()
+
+pdf("Output/Invariance_3week_circle.pdf", width = 10, height = 6)
+T1_T2_RESST_inv_crc_fig
+dev.off()
+```
+
+# EBIC network
+```{r ebicg}
+# fit network
+RESST_Network_eg <- estimateNetwork(RESST_items, default = "EBICglasso")
+
+# make a community structure 
+groupsint = list("self-worth" = c(1:7),
+                 "life worth" = c(8:11), 
+                 "social worth" = c(12:17),
+                 "self-understanding" = c(18:21)) 
+
+# centralities - regular
+cen_tab = centralityTable(RESST_Network_eg, standardized = TRUE) 
+cen_tab_strength = subset(cen_tab, measure == "Strength")
+cen_tab_strength
+
+centralityPlot(RESST_Network_eg, include = "all", scale = "raw", orderBy = "ExpectedInfluence")
+centralityPlot(RESST_Network_eg, include = "all", scale = "z-scores", orderBy = "ExpectedInfluence")
+
+# centralities - bridge
+(intbridge <- bridge(network_RESST_comm,
+                    communities = c('1','1','1','1','1','1','1',
+                                    '2','2','2','2',
+                                    '3','3','3','3', '3', '3', 
+                                    '4', '4', '4', '4'),
+                    useCommunities = "all", 
+                    directed = NULL,                 
+                    nodes = NULL))
+
+plot(intbridge)
+
+# Centrality stability 
+set.seed(123456)
+All_boot_case <- bootnet(RESST_Network_eg,
+                         communities = c('1','1','1','1','1','1','1',
+                                         '2','2','2','2',
+                                         '3','3','3','3', '3', '3', 
+                                         '4', '4', '4', '4'), 
+                         nBoots = 1000, 
+                         nCores = 4, 
+                         type = "case",
+                         statistics = c('betweenness', 'closeness', 'expectedInfluence', 
+                                        'BridgeStrength', 'bridgeExpectedInfluence', 'strength', 
+                                        'edge'))
+
+All_boot_case$bootTable
+plot(All_boot_case, 'all')
+corStability(All_boot_case)
+
+# edge stability 
+set.seed(123456)
+All_boot <- bootnet(RESST_Network_eg,
+                    nBoots = 1000, 
+                    nCores = 4,
+                    statistics = c('betweenness', 'closeness', 'expectedInfluence', 'strength', 'edge'))
+
+plot(All_boot, labels = FALSE, order = "sample") 
+plot(All_boot, labels = TRUE, order = "sample") 
+
+plot(All_boot, "edge", plot = "difference", onlyNonZero = TRUE, order = "sample")
+
+# for regularized, this is interpreted differently.regularization causes all edge-estimates to be biased towards zero, which implies that all sampling distributions are biased towards zero. so these sampling distributions are not CIs centered on the true (unbiased) parameter value. This means that if the quantiles of the bootstrapped sampling distribution overlap with zero it could be that the corresponding CI *does not* overlap with zero. However, if the quantiles of the bootstrapped sampling distribution do not overlap with zero, we know that also the corresponding CI does not overlap with zero
+plot(All_boot, plot = "interval", split0 = TRUE, order = "sample", labels = FALSE)
+
+# Centrality difference tests
+
+plot(All_boot, "strength", order = "sample", labels = TRUE) # strength
+plot(All_boot, "expectedInfluence", order = "sample", labels = TRUE) # expected influence
+
+set.seed(123456)
+(Boot_bridge <- bootnet(RESST_Network_eg, 
+                        boots = 1000, 
+                        statistics = c("bridgeStrength", "bridgeExpectedInfluence"), 
+                        communities = groupsint))
+table(Boot_bridge$bootTable$type)
+
+plot(Boot_bridge, statistics = "bridgeExpectedInfluence", plot = "difference")
+plot(Boot_bridge, statistics = "bridgeStrength", plot = "difference")
+
+# figures
+pdf("Output/EBIC_network.pdf", width = 10, height = 10)
+plot(RESST_Network_eg, 
+     layout = "spring", 
+     labels = TRUE)
+dev.off() 
+
+pdf("EBIC_network_clusters.pdf", width = 10, height = 10)
+network_RESST_comm <- plot(RESST_Network_eg, 
+                           groups = groupsint,
+                           color = c("lightcoral", 
+                                     "slategray2", 
+                                     "darkseagreen",
+                                     "#FF99FF"),
+                           layout = "spring", labels = TRUE)
+dev.off() 
+
+pdf("Output/EBIC_centrality_node_raw.pdf", width = 10, height = 10)
+centralityPlot(RESST_Network_eg, include = "all", scale = "raw", orderBy = "ExpectedInfluence")
+dev.off() 
+
+pdf("Output/EBIC_centrality_node_zscores.pdf", width = 10, height = 10)
+centralityPlot(RESST_Network_eg, include = "all", scale = "z-score", orderBy = "ExpectedInfluence")
+dev.off() 
+
+pdf("Output/EBIC_centrality_bridge.pdf", width = 10, height = 10)
+plot(intbridge)
+dev.off() 
+
+pdf("Output/EBIC_CS-coefficients.pdf", width = 5, height = 5)
+plot(All_boot_case, 'all')
+dev.off()
+
+pdf("Output/EBIC_CS-coefficient_EI.pdf", width = 5, height = 5)
+plot(All_boot_case, 'expectedInfluence')
+dev.off()
+
+pdf("Output/EBIC_CS-coefficient_str.pdf", width = 5, height = 5)
+plot(All_boot_case, 'strength')
+dev.off()
+
+pdf("Output/EBIC_CS-coefficient_bridge_EI.pdf", width = 5, height = 5)
+plot(All_boot_case, 'bridgeExpectedInfluence')
+dev.off()
+
+pdf("Output/EBIC_CS-coefficient_bridge_str.pdf", width = 5, height = 5)
+plot(All_boot_case, 'BridgeStrength')
+dev.off()
+
+pdf("Output/EBIC_boot_edges_1.pdf", width = 10, height = 10)
+plot(All_boot, labels = FALSE, order = "sample")
+dev.off()
+
+pdf("Output/EBIC_boot_edges_2.pdf", width = 10, height = 10)
+plot(All_boot, plot = "interval", split0 = TRUE, order = "sample", labels = FALSE)
+dev.off()
+
+pdf("Output/Centrality_diff_str.pdf")
+plot(All_boot, "strength", order="sample") 
+dev.off()
+
+pdf("Output/Centrality_diff_EI.pdf")
+plot(All_boot, "ExpectedInfluence", order="sample") 
+dev.off()
+
+pdf("Output/Centrality_diff_BEI.pdf")
+plot(Boot_bridge, statistics = "bridgeExpectedInfluence", plot = "difference")
+dev.off()
+
+pdf("Output/Centrality_diff_BStr.pdf")
+plot(Boot_bridge, statistics = "bridgeStrength", plot = "difference")
+dev.off()
+```
+
+# EBIC SA invariance
+```{r network feature invariance plot function}
+load_libraries <- function(){
+  if (!require("bootnet"))
+    install.packages("bootnet"); library(bootnet)
+  if (!require("dplyr"))
+    install.packages("dplyr"); library(dplyr)
+  if (!require("magrittr"))
+    install.packages("magrittr"); library(magrittr)
+  if (!require("psych"))
+    install.packages("psych"); library(psych)
+  if (!require("qgraph"))
+    install.packages("qgraph"); library(qgraph)
+}
+
+load_libraries()
+
+
+compareCentrality <- function(net1, net2,
+                              include = c("Strength",
+                                          "Closeness",
+                                          "Betweenness",
+                                          "ExpectedInfluence",
+                                          "all",
+                                          "All"),
+                              orderBy = c("Strength",
+                                          "Closeness",
+                                          "Betweenness",
+                                          "ExpectedInfluence"),
+                              decreasing = T,
+                              legendName = '',
+                              net1Name = 'Network 1',
+                              net2Name = 'Network 2'){
+  
+  library(ggplot2)
+  library(forcats)
+  
+  if(include == "All" | include == "all"){
+    include = c("Strength",
+                "Closeness",
+                "Betweenness",
+                "ExpectedInfluence")
+  }
+  
+  df <- centralityTable(net1, net2) %>% filter(measure %in% include)
+  
+  df %>% 
+    mutate(graph = case_when(graph == 'graph 1' ~ net1Name,
+                             graph == 'graph 2' ~ net2Name),
+           graph = as.factor(graph),
+           node = as.factor(node)) %>% 
+    
+    mutate(node = fct_reorder(node, value)) %>% 
+    
+    ggplot(aes(x = node, y = value, group = graph)) +
+    
+    geom_line(aes(linetype = graph), linewidth = 1) +
+    
+    labs(x = '', y = '') +
+    
+    scale_linetype_discrete(name = legendName) +
+    
+    coord_flip() +
+    
+    facet_grid(~measure) +
+    
+    theme_bw()
+  
+}
+```
+
+```{r SA network feature invariance}
+set.seed(123456)
+NCT <- NCT(data1 = RESST_inv[RESST_inv$SA_group == "0", 1:21],
+    data2 = RESST_inv[RESST_inv$SA_group == "1", 1:21], 
+    it = 1000, 
+    binary.data = FALSE, 
+    paired = FALSE, 
+    weighted = TRUE, 
+    abs = TRUE, 
+    test.edges = TRUE,
+    edges ="all", 
+    progressbar = TRUE, 
+    make.positive.definite = FALSE,
+    p.adjust.methods = "none", 
+    test.centrality = TRUE, 
+    centrality=c("strength", "expectedInfluence", "bridgeStrength", "bridgeExpectedInfluence"), 
+    nodes = "all", 
+    communities = c('1','1','1','1','1','1','1',
+                    '2','2','2','2',
+                    '3','3','3','3', '3', '3', 
+                    '4', '4', '4', '4'), 
+    useCommunities = "all",
+    estimatorArgs=list(), 
+    verbose=TRUE)
+
+summary(NCT)
+
+# strength = test on invariance of global strength
+# network structure = test on invariance of network structure
+# edge = test on invariance of network edges
+# centrality = test on invariance of centrality 
+
+plot(NCT, what = "strength")
+plot(NCT, what = "network")
+plot(NCT, what = "edge")
+plot(NCT, what = "centrality")
+
+# plot strength / SA networks
+network_SA_pos <- estimateNetwork(RESST_inv[RESST_inv$SA_group == "1", 1:21], default = "EBICglasso")
+network_SA_neg <- estimateNetwork(RESST_inv[RESST_inv$SA_group == "0", 1:21], default = "EBICglasso")
+
+set.seed(123456)
+bootnet_1 <- bootnet(network_SA_pos,
+                     nBoots = 1000, 
+                     type = "case",
+                     nCores = 4,
+                     communities = c('1','1','1','1','1','1','1',
+                                     '2','2','2','2',
+                                     '3','3','3','3', '3', '3', 
+                                     '4', '4', '4', '4'), 
+                     statistics = c('expectedInfluence', 'strength', 
+                                    'bridgeStrength', 'bridgeExpectedInfluence', 
+                                    'edge')) 
+
+set.seed(123456)
+bootnet_2 <- bootnet(network_SA_neg,
+                     nBoots = 1000, 
+                     type = "case",
+                     nCores = 4,
+                     communities = c('1','1','1','1','1','1','1',
+                                     '2','2','2','2',
+                                     '3','3','3','3', '3', '3', 
+                                     '4', '4', '4', '4'), 
+                     statistics = c('expectedInfluence', 'strength', 
+                                    'bridgeStrength', 'bridgeExpectedInfluence', 
+                                    'edge')) 
+
+plot(bootnet_1, 'all')
+plot(bootnet_2, 'all')
+
+corStability(bootnet_1)
+corStability(bootnet_2)
+
+#' Creating hyperparameter 
+max_value <- max(
+  max(abs(network_SA_pos$graph)), 
+  max(abs(network_SA_neg$graph)) 
+  )
+
+net_layout <- averageLayout(network_SA_pos,
+                            network_SA_neg,
+                            layout = "spring")
+
+par(mfrow = c(1, 2), mar = c(5, 4, 4, 2) + 0.1)
+
+plot(network_SA_neg, 
+     layout = net_layout, 
+     maximum = max_value, 
+     label.cex = 0.7, 
+     label.color = 'black', 
+     label.prop = 0.9, 
+     negDashed = TRUE, 
+     font = 2)
+
+mtext("Network: SA-", side = 3, line = 1, adj = .1, cex = .9)
+
+plot(network_SA_pos, 
+     layout = net_layout, 
+     maximum = max_value, 
+     label.cex = 0.7, 
+     label.color = 'black', 
+     label.prop = 0.9, 
+     negDashed = TRUE, 
+     font = 2)
+mtext("SA+", side = 3, line = 1, adj = .1, cex = .9)
+
+
+(SA_ST_cent <- compareCentrality(network_SA_pos, network_SA_neg,
+                                include = "Strength",
+                                legendName = "Networks by SA status",
+                                net1Name = "SA+",
+                                net2Name = "SA-"))
+
+(SA_EI_cent <- compareCentrality(network_SA_pos, network_SA_neg,
+                                include = "ExpectedInfluence",
+                                legendName = "Networks by SA status",
+                                net1Name = "SA+",
+                                net2Name = "SA-"))
+
+# figures
+pdf("Output/NCT_SA_global_strength.pdf", width = 5, height = 5)
+plot(NCT, what = "strength")
+dev.off()
+
+pdf("Output/NCT_SA_network_structure.pdf", width = 5, height = 5)
+plot(NCT, what = "network")
+dev.off()
+
+pdf("Output/NCT_SA_edges.pdf", width = 5, height = 5)
+plot(NCT, what = "edge")
+dev.off()
+
+pdf("Output/NCT_SA_strength_centrality.pdf", width = 5, height = 5)
+plot(NCT, what = "centrality")
+dev.off()
+
+pdf("Output/SA+-_strength_centrality.pdf", width = 5, height = 5)
+SA_ST_cent
+dev.off()
+
+pdf("Output/SA+-_EI_centrality.pdf", width = 5, height = 5)
+SA_EI_cent
+dev.off()
+
+pdf("Output/SA+_CS-coefficients.pdf", width = 5, height = 5)
+plot(bootnet_1, 'all')
+dev.off()
+
+pdf("Output/SA-_CS-coefficients.pdf", width = 5, height = 5)
+plot(bootnet_2, 'all')
+dev.off()
+```
+

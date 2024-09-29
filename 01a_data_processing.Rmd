@@ -1,10 +1,10 @@
 ---
-title: "01_data_processing"
+title: "01a_data_processing"
 author: "Sglatt"
 date: "`r Sys.Date()`"
 output: html_document
 ---
-
+# Merging 4 samples, removing duplicates and making variables consistent
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -217,8 +217,8 @@ R_S4_vars <- R_S4_vars %>%
 summary(R_S4_vars$Q51) # good 
 ```
 
-# Merge
-```{r}
+# Merge all samples
+```{r merging}
 # all variables should be identical but double check
 setdiff(colnames(R_S2_vars), colnames(R_S1_vars))
 setdiff(colnames(R_S1_vars), colnames(R_S2_vars))
@@ -283,7 +283,64 @@ for (col in common_cols) {
   merged_3 <- merged_3[, !colnames(merged_3) %in% c(paste0(col, ".x"), paste0(col, ".y"))]
 }
 
+```
+
+# SBQ-R scoring
+```{r sbqr score}
+merged_3 <- merged_3 %>%
+  mutate(across(c(Q45, Q47, Q49, Q51), as.numeric))
+
+# item 1:
+merged_3 <- merged_3 %>%
+  mutate(Q45c = case_when(
+    Q45 %in% c(3, 4) ~ 3,
+    Q45 %in% c(5, 6) ~ 4, 
+    TRUE ~ Q45 # Keep other values unchanged so 1 = 1 and 2 = 2 in line with SBQ-R scoring
+  ))
+
+summary(merged_3$Q45c)
+
+# item 3: 
+summary(merged_3$Q49)
+merged_3 <- merged_3 %>%
+  mutate(Q49c = case_when(
+    Q49 %in% c(2, 3) ~ 2,
+    Q49 %in% c(4, 5) ~ 3,
+    TRUE ~ Q49  # Keep other values unchanged so 1 = 1 in line with SBQ-R scoring
+  ))
+
+summary(merged_3$Q49c)
+
+# SBQ-R total scores: 
+merged_3 <- merged_3 %>%
+  mutate(SBQR_total = 
+           Q45c # recoded item 1
+         + Q47  # item 2 
+         + Q49c # recoded item 3
+         + Q51) # item 4
+
+summary(merged_3$SBQR_total)
+# minimum = 3
+# maximum = 18
+# average = 10.24  
+# median = 10
+sum(merged_3$SBQR_total >= 7) / length(merged_3$SBQR_total) * 100 # 90% met the risk cutoff
+sum(merged_3$Q45 >= 3) / length(merged_3$Q45) * 100 # 80% endorsed a suicide plan or attempt history 
+sum(merged_3$Q45 >= 5) / length(merged_3$Q45) * 100 # 35% endorsed a suicide attempt history 
+sum(merged_3$Q45 %in% c(3, 4)) / length(merged_3$Q45) * 100 # 45% endorsed a suicide plan history
+sum(merged_3$Q47 >= 3) / length(merged_3$Q47) * 100 # 62% endorsed suicidal thoughts "somewhat" or >
+
+# Make SA group variable
+merged_3$SA_group <- ifelse(merged_3$Q45 >= 5, 1, 0)  # 1 = SA, 613
+```
+
+# Save data
+```{r save}
 # Save data
 write.csv(merged_3, file = paste0("Created_data/RESST_merged_SG_", Sys.Date(), ".csv"))
+
+# Remove workedID and save data - can go on repositories 
+merged_3_di <- merged_3 %>% select(-workerID)
+write.csv(merged_3_di, file = paste0("Created_data/RESST_merged_deiden_SG_", Sys.Date(), ".csv"))
 ```
 

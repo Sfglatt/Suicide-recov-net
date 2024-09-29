@@ -1,0 +1,55 @@
+---
+title: "01b_data_processing"
+author: "Sglatt"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Manipulating the 3 week / 7 month dataset
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages}
+if (!require("dplyr")) {install.packages("dplyr"); require("dplyr")}
+if (!require("tidyverse")) {install.packages("tidyverse"); require("tidyverse")}
+```
+
+```{r long form}
+RESST_3w <- readxl::read_xlsx("Raw_data/RESST_3_wave_data.xlsx") 
+# this three wave data including all people from test-retest (n = 204) from time 1 (S2) to time 2 (S3), and a subset of the 204 who answered at seven month follow up.
+
+head(RESST_3w)
+
+RESST_3w_all <- RESST_3w %>% filter(TP1_to_2 == 1) # a dataset with people who participated at T1 and T2 (n = 204)
+
+RESST_3w_all_subset <- RESST_3w_all[, c("TP1_WorkerIDs", paste0("TP1_RESST_", 1:21), paste0("TP2_RESST_", 1:21))]
+
+# changing data to quasi long form
+long_format <- RESST_3w_all_subset %>%
+  pivot_longer(cols = -TP1_WorkerIDs, 
+               names_to = "Variable", 
+               values_to = "Value")
+
+long_format <- long_format %>%
+  mutate(Timepoint = ifelse(grepl("TP1", Variable), "TP1", "TP2"),  Item = gsub("TP[12]_", "", Variable))
+
+long_format_2 <- long_format %>%
+  dplyr::select(-Variable) %>%
+  pivot_wider(names_from = Item, 
+              values_from = Value)
+
+long_format_3 <- long_format_2 %>%
+  rename_with(~ paste0("R", gsub("RESST_", "", .)), contains("RESST"))
+```
+
+# Save data
+```{r save}
+# Save data
+write.csv(long_format_3, file = paste0("Created_data/RESST_3_week_long_form_SG_", Sys.Date(), ".csv"))
+
+# Remove workedID and save data - can go on repositories 
+long_format_3_di <- long_format_3 %>% dplyr::select(-TP1_WorkerIDs)
+write.csv(long_format_3_di, file = paste0("Created_data/RESST_3_week_long_form_deiden_SG_", Sys.Date(), ".csv"))
+```
+
