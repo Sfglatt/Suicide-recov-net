@@ -1,0 +1,289 @@
+---
+title: "01_data_processing"
+author: "Sglatt"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages}
+if (!require("dplyr")) {install.packages("dplyr"); require("dplyr")}
+if (!require("tidyverse")) {install.packages("tidyverse"); require("tidyverse")}
+```
+
+# Import data
+```{r data}
+R_S1 <- readxl::read_xlsx("Raw_data/RESST_S1.xlsx")
+R_S2 <- readxl::read_xlsx("Raw_data/RESST_S2.xlsx")
+R_S3 <- readxl::read_xlsx("Raw_data/RESST_S3.xlsx")
+R_S4 <- readxl::read_xlsx("Raw_data/RESST_S4.xlsx")
+
+# Look at structure
+head(R_S1)
+head(R_S2)
+head(R_S3)
+head(R_S4)
+
+# Remove first two rows from S4
+R_S4 <- R_S4[-(1:2), ]
+head(R_S4) # good
+
+# Add dataset identifiers
+R_S1 <- R_S1 %>%
+  mutate(Dataset = "S1")
+
+R_S2 <- R_S2 %>%
+  mutate(Dataset = "S2")
+
+R_S3 <- R_S3 %>%
+  mutate(Dataset = "S3")
+
+R_S4 <- R_S4 %>%
+  mutate(Dataset = "S4")
+
+# Make variable names consistent
+R_S1 <- R_S1 %>%
+  rename(
+    workerID = workerId,
+    Age = Q9,
+    Gender = Q11,
+    Gender_other = Q75,
+    Gender_TEXT = Q11_3_TEXT,
+    Ethnicity_TEXT = Ethnicity_6_TEXT,
+    Sexual_Orientation = Q77, 
+    Sexual_Orientation_TEXT = Q77_7_TEXT, 
+    Marital_Status = Q61, 
+    Marital_Status_TEXT = Q61_6_TEXT,
+    Employment = Q63,
+    Employment_11_TEXT = Q63_11_TEXT, 
+    Education = Q65, 
+    Income = Q67,
+    Q51 = SBQR.4
+    )
+
+R_S2 <- R_S2 %>%
+  rename(
+    Age = Q9,
+    Gender = Q11,
+    Gender_other = Q75,
+    Gender_TEXT = Q11_3_TEXT,
+    Ethnicity = Ethnicity,
+    Ethnicity_TEXT = Ethnicity_6_TEXT,
+    Sexual_Orientation = Sexual_Orientation, 
+    Sexual_Orientation_TEXT = Sexual_Orientation_7_TEXT, 
+    Marital_Status = Marital_Status, 
+    Marital_Status_TEXT = Marital_Status_6_TEXT,
+    Employment = Employment,
+    Employment_11_TEXT = Employment_11_TEXT, 
+    Education = Education, 
+    Income = Income
+    )
+
+R_S3 <- R_S3 %>%
+  rename(
+    Age = age,
+    Gender = gender,
+    Gender_other = Q22,
+    Gender_TEXT = Q21_3_TEXT,
+    Ethnicity = ethnicity,
+    Ethnicity_TEXT = Q23_6_TEXT,
+    Sexual_Orientation = sexual.orientation, 
+    Sexual_Orientation_TEXT = Q24_4_TEXT, 
+    Marital_Status = marital.status, 
+    Marital_Status_TEXT = Q25_6_TEXT,
+    Employment = employment,
+    Education = education, 
+    Income = income, 
+    Military_status = Q29, 
+    Military_discharge = Q30
+    )
+
+new_names <- paste0("R", 1:21) # For RESST items in sample 4 to be renamed
+R_S4 <- R_S4 %>%
+  rename(
+    Age = Q20,
+    Gender = Q21,
+    Gender_other = Q22,
+    Gender_TEXT = Q21_3_TEXT,
+    Ethnicity = Q23,
+    Ethnicity_TEXT = Q23_6_TEXT,
+    Sexual_Orientation = Q24, 
+    Sexual_Orientation_TEXT = Q24_4_TEXT, 
+    Marital_Status = Q25, 
+    Marital_Status_TEXT = Q25_6_TEXT,
+    Employment = Q26,
+    Education = Q27, 
+    Income = Q28,
+    Military_status = Q29,
+    Military_discharge = Q30,
+    !!!setNames(names(R_S4)[grep("Recovery scale", names(R_S4))], new_names)
+  )
+
+# Isolate demographics, RESST items, and SBQ-R items from each dataset
+vars <- function(data) {
+  data %>%
+    dplyr::select(
+      workerID, Dataset,
+      # RESST
+      R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R15, R16, R17, R18, R19, R20, R21,
+      # SBQ-R
+      Q45, Q47, Q49, Q51,
+      # Demos
+      Age, Gender, Gender_other, Gender_TEXT, Ethnicity, Ethnicity_TEXT,
+      Sexual_Orientation, Sexual_Orientation_TEXT, Marital_Status, Marital_Status_TEXT,
+      Employment, Education, Income, Military_status, Military_discharge
+    )
+}
+
+R_S1_vars <- vars(R_S1)
+R_S2_vars <- vars(R_S2)
+R_S3_vars <- vars(R_S3)
+R_S4_vars <- vars(R_S4)
+```
+
+# SBQ-R scoring in each separate datastet, before merging
+```{r}
+#### Sample 1 ####
+
+summary(R_S1_vars$Q45) # good 2-6
+
+summary(R_S1_vars$Q47) # good 1-5
+
+summary(R_S1_vars$Q49) # 11-15, needs to be 1-5
+
+# recode so 11 = 1, 12 = 2, 13 = 3, 14 = 4, 15 = 5. 
+R_S1_vars <- R_S1_vars %>%
+  mutate(Q49 = case_when(
+    Q49 == 11 ~ 1,
+    Q49 == 12 ~ 2,
+    Q49 == 13 ~ 3,
+    Q49 == 14 ~ 4,
+    Q49 == 15 ~ 5
+  ))
+summary(R_S1_vars$Q49) # good
+
+summary(R_S1_vars$Q51) # 1-7
+# needs to be recoded to 0-6. 
+
+R_S1_vars <- R_S1_vars %>%
+  mutate(Q51 = Q51 - 1) 
+summary(R_S1_vars$Q51)
+
+#### sample two ####
+
+summary(R_S2_vars$Q45) # good 1-6
+
+summary(R_S2_vars$Q47) # 0-4, needs to be 1-5
+
+R_S2_vars <- R_S2_vars %>%
+  mutate(Q47 = Q47 + 1)
+
+summary(R_S2_vars$Q49) # good 1-5
+
+summary(R_S2_vars$Q51) # good 0-6
+
+#### sample three ####
+
+summary(R_S3_vars$Q45) # good 1-6
+
+summary(R_S3_vars$Q47) # good 1-5
+
+summary(R_S3_vars$Q49) # good 1-5
+
+summary(R_S3_vars$Q51) # 0-7, but it can only be 0-6. check this out:
+table(R_S3_vars$Q51)   # there are no 6's. All 7's should be recoded to 6
+
+R_S3_vars <- R_S3_vars %>%
+  mutate(Q51 = ifelse(Q51 == 7, 6, Q51)) 
+
+table(R_S3_vars$Q51) # now good. 
+
+####  sample four ####
+
+summary(R_S4_vars$Q45) # 1-6
+
+summary(R_S4_vars$Q47) # 1-5
+
+summary(R_S4_vars$Q49) # 1-5
+
+summary(R_S4_vars$Q51) # 1-7
+# needs to be recoded to 0-6. 
+
+R_S4_vars <- R_S4_vars %>%
+  mutate(Q51 = as.numeric(Q51) - 1) 
+summary(R_S4_vars$Q51) # good 
+```
+
+# Merge
+```{r}
+# all variables should be identical but double check
+setdiff(colnames(R_S2_vars), colnames(R_S1_vars))
+setdiff(colnames(R_S1_vars), colnames(R_S2_vars))
+
+setdiff(colnames(R_S2_vars), colnames(R_S3_vars))
+setdiff(colnames(R_S3_vars), colnames(R_S2_vars))
+
+setdiff(colnames(R_S3_vars), colnames(R_S4_vars))
+setdiff(colnames(R_S4_vars), colnames(R_S3_vars))
+# good 
+
+#### merge 1 and 2 ####
+merged_1 <- full_join(
+  R_S1_vars,
+  R_S2_vars,
+  by = "workerID")
+
+# Identify common columns in both datasets
+(common_cols <- intersect(colnames(R_S1_vars)[-1], colnames(R_S2_vars)[-1])) 
+
+for (col in common_cols) {
+  
+  # Making a new column with non-missing .x values and filling from .y where .x is missing
+  merged_1[[col]] <- ifelse(!is.na(merged_1[[paste0(col, ".x")]]),
+                            merged_1[[paste0(col, ".x")]],
+                            merged_1[[paste0(col, ".y")]])
+  
+  # remove the original .x and .y columns
+  merged_1 <- merged_1[, !colnames(merged_1) %in% c(paste0(col, ".x"), paste0(col, ".y"))]
+}
+
+#### merge 1-2 and 3 ####
+merged_2 <- full_join(
+  merged_1,
+  R_S3_vars,
+  by = "workerID")
+
+(common_cols <- intersect(colnames(merged_1)[-1], colnames(R_S3_vars)[-1])) 
+
+for (col in common_cols) {
+  
+  merged_2[[col]] <- ifelse(!is.na(merged_2[[paste0(col, ".x")]]),
+                            merged_2[[paste0(col, ".x")]],
+                            merged_2[[paste0(col, ".y")]])
+  
+  merged_2 <- merged_2[, !colnames(merged_2) %in% c(paste0(col, ".x"), paste0(col, ".y"))]
+}
+#### merge 1-2-3 and 4 ####
+merged_3 <- full_join(
+  merged_2,
+  R_S4_vars,
+  by = "workerID")
+
+(common_cols <- intersect(colnames(merged_2)[-1], colnames(R_S4_vars)[-1])) 
+
+for (col in common_cols) {
+  
+  merged_3[[col]] <- ifelse(!is.na(merged_3[[paste0(col, ".x")]]),
+                            merged_3[[paste0(col, ".x")]],
+                            merged_3[[paste0(col, ".y")]])
+  
+  merged_3 <- merged_3[, !colnames(merged_3) %in% c(paste0(col, ".x"), paste0(col, ".y"))]
+}
+
+# Save data
+write.csv(merged_3, file = paste0("Created_data/RESST_merged_SG_", Sys.Date(), ".csv"))
+```
+
