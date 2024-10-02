@@ -104,7 +104,7 @@ fci.output <- fci(suffStat=list(C = cov2cor(cov(FCI_items_2)),
 
 # plot FCI graph 
 plot.fci.igraph <- function(fci){
-  require(igraph) # using igraph
+  require(igraph) 
   amat <- fci@amat
   amat.dir <- amat
   amat.dir[amat.dir==1 | amat.dir==3] <- 0
