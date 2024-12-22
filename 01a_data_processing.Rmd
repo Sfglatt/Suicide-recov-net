@@ -324,6 +324,11 @@ summary(merged_3$SBQR_total)
 # maximum = 18
 # average = 10.24  
 # median = 10
+
+#merged_3 <- read.csv("Created_data/RESST_merged_SG_2024-09-29.csv") # From "01a_data_processing"
+colnames(merged_3)
+
+summary(merged_3$SBQR_total)
 sum(merged_3$SBQR_total >= 7) / length(merged_3$SBQR_total) * 100 # 90% met the risk cutoff
 sum(merged_3$Q45 >= 3) / length(merged_3$Q45) * 100 # 80% endorsed a suicide plan or attempt history 
 sum(merged_3$Q45 >= 5) / length(merged_3$Q45) * 100 # 35% endorsed a suicide attempt history 
@@ -340,7 +345,6 @@ merged_3$SA_group <- ifelse(merged_3$Q45 >= 5, 1, 0)  # 1 = SA, 613
 write.csv(merged_3, file = paste0("Created_data/RESST_merged_SG_", Sys.Date(), ".csv"))
 
 # Remove workedID and save data - can go on repositories 
-merged_3_di <- merged_3 %>% select(-workerID)
+merged_3_di <- merged_3 %>% dplyr::select(-workerID)
 write.csv(merged_3_di, file = paste0("Created_data/RESST_merged_deiden_SG_", Sys.Date(), ".csv"))
 ```
-

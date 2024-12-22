@@ -2,7 +2,8 @@
 title: "02b_directed"
 author: "Sglatt"
 date: "`r Sys.Date()`"
-output: html_document
+output: github_document
+keep_html: TRUE
 ---
 
 ```{r setup, include=FALSE}
@@ -19,7 +20,6 @@ if (!require("moments")) {install.packages("moments"); require("moments")}
 if (!require("pcalg")) {install.packages("pcalg"); require("pcalg")}
 if (!require("psych")) {install.packages("psych"); require("psych")}
 if (!require("qgraph")) {install.packages("qgraph"); require("qgraph")}
-if (!require("readxl")) {install.packages("readxl"); require("readxl")}
 if (!require("stats")) {install.packages("stats"); require("stats")}
 if (!require("tidyverse")) {install.packages("tidyverse"); require("tidyverse")}
 
@@ -29,7 +29,7 @@ BiocManager::install("RBGL")
 ```
 
 ```{r Data and prep}
-RESST_all <- read.csv("Created_data/RESST_merged_SG_2024-09-29.csv") # From "01a_data_processing"
+RESST_all <- read.csv("Created_data/RESST_merged_SG_2024-10-08.csv") # From "01a_data_processing"
 
 RESST_all <- RESST_all %>%
   mutate(across(c(R1:R21), as.numeric))

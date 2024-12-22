@@ -2,7 +2,8 @@
 title: "02a_networks"
 author: "Sglatt"
 date: "`r Sys.Date()`"
-output: html_document
+output: github_document
+keep_html: TRUE
 ---
 
 ```{r setup, include=FALSE}
@@ -19,7 +20,6 @@ if (!require("ggplot2")) {install.packages("ggplot2"); require("ggplot2")}
 if (!require("glmnet")) {install.packages("glmnet"); require("glmnet")}
 if (!require("haven")) {install.packages("haven"); require("haven")}
 if (!require("igraph")) {install.packages("igraph"); require("igraph")}
-if (!require("IsingFit")) {install.packages("IsingFit"); require("IsingFit")}
 if (!require("jmv")) {install.packages("jmv"); require("jmv")}
 if (!require("moments")) {install.packages("moments"); require("moments")}
 if (!require("naniar")) {install.packages("naniar"); require("naniar")}
@@ -30,16 +30,16 @@ if (!require("pcalg")) {install.packages("pcalg"); require("pcalg")}
 if (!require("psych")) {install.packages("psych"); require("psych")}
 if (!require("psychTools")) {install.packages("psychTools"); require("psychTools")}
 if (!require("qgraph")) {install.packages("qgraph"); require("qgraph")}
-if (!require("relaimpo")) {install.packages("relaimpo"); require("relaimpo")}
 if (!require("stats")) {install.packages("stats"); require("stats")}
 if (!require("tidyverse")) {install.packages("tidyverse"); require("tidyverse")}
 ```
 
 # Data and subsets
-```{r}
-RESST_all <- read.csv("Created_data/RESST_merged_SG_2024-09-29.csv") # From "01a_data_processing"
+```{r data}
+RESST_all <- read.csv("Created_data/RESST_merged_SG_2024-10-08.csv") # From "01a_data_processing"
+colnames(RESST_all)
 
-RESST_all <- merged_3
+# RESST_all <- merged_3
 
 RESST_all <- RESST_all %>%
   mutate(across(c(R1:R21), as.numeric))
@@ -152,11 +152,28 @@ dimensionStability(RESST_boot)
 dev.off()
 ```
 
+# Prefer latent or network?
+```{r LCT}
+LCT(
+  RESST_items,
+  model = "glasso", 
+  algorithm = "walktrap",
+  uni.method = "louvain",
+  iter = 100,
+  seed = 123456,
+)
+```
+
 # EGA Suicide attempt invariance
 ```{r EGA SA inv}
 # network for people with SA history 
+RESST_inv <- RESST_inv %>%
+  mutate(SA_group_f = ifelse(SA_group == 1, "SA+", "SA-"))
+table(RESST_inv$SA_group)
+table(RESST_inv$SA_group_f)
+
 RESST_ega_SA <- bootEGA(
-  data = RESST_inv[RESST_inv$SA_group == "1", 1:21],
+  data = RESST_inv[RESST_inv$SA_group_f == "SA+", 1:21],
   corr = "auto",
   model = "glasso",
   algorithm = "walktrap",
@@ -171,7 +188,7 @@ RESST_ega_SA <- bootEGA(
 )
 
 RESST_ega_no_SA <- bootEGA(
-  data = RESST_inv[RESST_inv$SA_group == "0", 1:21],
+  data = RESST_inv[RESST_inv$SA_group_f == "SA-", 1:21],
   corr = "auto",
   model = "glasso",
   algorithm = "walktrap",
@@ -199,7 +216,7 @@ igraph::compare(RESST_ega_SA$wc, RESST_ega_no_SA$wc, method = "nmi")
 
 # metric invariance by SA status
 metric_inv_SA <- invariance(data = RESST_inv[,1:21],
-                             groups = RESST_inv$SA_group, 
+                             groups = RESST_inv$SA_group_f, 
                              configural.threshold = 0.7, 
                              configural.type = "parametric",
                              corr = "auto",
@@ -286,12 +303,16 @@ groupsint = list("self-worth" = c(1:7),
                  "social worth" = c(12:17),
                  "self-understanding" = c(18:21)) 
 
+network_RESST_comm <- plot(RESST_Network_eg, 
+                           groups = groupsint, color=c("lightcoral", "slategray2", "darkseagreen", "#FF99FF"),
+                           layout = "spring", labels = TRUE)
+
 # centralities - regular
-cen_tab = centralityTable(RESST_Network_eg, standardized = TRUE) 
+(cen_tab = centralityTable(RESST_Network_eg, standardized = TRUE))
 cen_tab_strength = subset(cen_tab, measure == "Strength")
 cen_tab_strength
 
-centralityPlot(RESST_Network_eg, include = "all", scale = "raw", orderBy = "ExpectedInfluence")
+# centralityPlot(RESST_Network_eg, include = "all", scale = "raw", orderBy = "ExpectedInfluence")
 centralityPlot(RESST_Network_eg, include = "all", scale = "z-scores", orderBy = "ExpectedInfluence")
 
 # centralities - bridge
@@ -301,10 +322,15 @@ centralityPlot(RESST_Network_eg, include = "all", scale = "z-scores", orderBy = 
                                     '3','3','3','3', '3', '3', 
                                     '4', '4', '4', '4'),
                     useCommunities = "all", 
-                    directed = NULL,                 
+                    directed = NULL,   
+                    normalize = FALSE,
                     nodes = NULL))
 
-plot(intbridge)
+plot(intbridge, zscore = TRUE, color = TRUE)
+
+# Just EI
+out1 <- expectedInf(network_RESST_comm) 
+plot(out1, order = "value", color = TRUE, zscore = TRUE)
 
 # Centrality stability 
 set.seed(123456)
@@ -329,20 +355,23 @@ set.seed(123456)
 All_boot <- bootnet(RESST_Network_eg,
                     nBoots = 1000, 
                     nCores = 4,
+                    type = "nonparametric", 
                     statistics = c('betweenness', 'closeness', 'expectedInfluence', 'strength', 'edge'))
 
-plot(All_boot, labels = FALSE, order = "sample") 
-plot(All_boot, labels = TRUE, order = "sample") 
+# Plot network from bootnet (some edges set to 0)
+boot_network_eg <- bootThreshold(All_boot, alpha = 0.05, verbose = TRUE, thresholdIntercepts = FALSE)
+plot(boot_network_eg)
 
-plot(All_boot, "edge", plot = "difference", onlyNonZero = TRUE, order = "sample")
+plot(All_boot, labels = TRUE, order = "sample") 
+(edge_diff_plot <- plot(All_boot, "edge", plot = "difference", onlyNonZero = TRUE, order = "sample"))
 
 # for regularized, this is interpreted differently.regularization causes all edge-estimates to be biased towards zero, which implies that all sampling distributions are biased towards zero. so these sampling distributions are not CIs centered on the true (unbiased) parameter value. This means that if the quantiles of the bootstrapped sampling distribution overlap with zero it could be that the corresponding CI *does not* overlap with zero. However, if the quantiles of the bootstrapped sampling distribution do not overlap with zero, we know that also the corresponding CI does not overlap with zero
 plot(All_boot, plot = "interval", split0 = TRUE, order = "sample", labels = FALSE)
 
 # Centrality difference tests
 
-plot(All_boot, "strength", order = "sample", labels = TRUE) # strength
-plot(All_boot, "expectedInfluence", order = "sample", labels = TRUE) # expected influence
+plot(All_boot, "strength", order = "sample", labels = TRUE) 
+plot(All_boot, "expectedInfluence", order = "sample", labels = TRUE) 
 
 set.seed(123456)
 (Boot_bridge <- bootnet(RESST_Network_eg, 
@@ -361,14 +390,8 @@ plot(RESST_Network_eg,
      labels = TRUE)
 dev.off() 
 
-pdf("EBIC_network_clusters.pdf", width = 10, height = 10)
-network_RESST_comm <- plot(RESST_Network_eg, 
-                           groups = groupsint,
-                           color = c("lightcoral", 
-                                     "slategray2", 
-                                     "darkseagreen",
-                                     "#FF99FF"),
-                           layout = "spring", labels = TRUE)
+pdf("Output/EBIC_network_clusters.pdf", width = 10, height = 10)
+network_RESST_comm 
 dev.off() 
 
 pdf("Output/EBIC_centrality_node_raw.pdf", width = 10, height = 10)
@@ -379,8 +402,8 @@ pdf("Output/EBIC_centrality_node_zscores.pdf", width = 10, height = 10)
 centralityPlot(RESST_Network_eg, include = "all", scale = "z-score", orderBy = "ExpectedInfluence")
 dev.off() 
 
-pdf("Output/EBIC_centrality_bridge.pdf", width = 10, height = 10)
-plot(intbridge)
+pdf("Output/EBIC_centrality_bridge.pdf", width = 13, height = 7)
+plot(intbridge, zscore = TRUE, color = TRUE)
 dev.off() 
 
 pdf("Output/EBIC_CS-coefficients.pdf", width = 5, height = 5)
@@ -407,7 +430,7 @@ pdf("Output/EBIC_boot_edges_1.pdf", width = 10, height = 10)
 plot(All_boot, labels = FALSE, order = "sample")
 dev.off()
 
-pdf("Output/EBIC_boot_edges_2.pdf", width = 10, height = 10)
+pdf("Output/EBIC_boot_edges_2.pdf", width = 10, height = 15)
 plot(All_boot, plot = "interval", split0 = TRUE, order = "sample", labels = FALSE)
 dev.off()
 
@@ -425,6 +448,10 @@ dev.off()
 
 pdf("Output/Centrality_diff_BStr.pdf")
 plot(Boot_bridge, statistics = "bridgeStrength", plot = "difference")
+dev.off()
+
+pdf("Output/EBIC_edge_difference.pdf", width = 10, height = 12)
+edge_diff_plot
 dev.off()
 ```
 
@@ -533,7 +560,7 @@ summary(NCT)
 
 plot(NCT, what = "strength")
 plot(NCT, what = "network")
-plot(NCT, what = "edge")
+# plot(NCT, what = "edge")
 plot(NCT, what = "centrality")
 
 # plot strength / SA networks
@@ -649,6 +676,6 @@ dev.off()
 
 pdf("Output/SA-_CS-coefficients.pdf", width = 5, height = 5)
 plot(bootnet_2, 'all')
-dev.off()
+dev.off
 ```
 

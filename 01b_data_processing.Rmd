@@ -5,7 +5,7 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
-# Manipulating the 3 week / 7 month dataset
+# Manipulating the 3 week dataset
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -48,7 +48,6 @@ long_format_3 <- long_format_2 %>%
 # Save data
 write.csv(long_format_3, file = paste0("Created_data/RESST_3_week_long_form_SG_", Sys.Date(), ".csv"))
 
-# Remove workedID and save data - can go on repositories 
 long_format_3_di <- long_format_3 %>% dplyr::select(-TP1_WorkerIDs)
 write.csv(long_format_3_di, file = paste0("Created_data/RESST_3_week_long_form_deiden_SG_", Sys.Date(), ".csv"))
 ```
